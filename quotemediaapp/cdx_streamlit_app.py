@@ -185,7 +185,7 @@ if st.button("🚀 Run Analysis"):
             # Optionally, you could use a threshold, e.g., only flag if max_vol is at least X% above avg
             for _, row in group.iterrows():
                 this_vol = float(row["sharevolume"])
-                vol_percent = (this_vol / avg_vol) * 100
+                vol_percent = ((this_vol - avg_vol) / avg_vol) * 100
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
                 # Only flag the max volume day(s) and if it meets the percent threshold (X% more than avg)
