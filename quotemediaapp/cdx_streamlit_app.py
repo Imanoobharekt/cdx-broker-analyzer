@@ -78,7 +78,7 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
             return pd.DataFrame()
 
         data = response.json()
-        participants = data.get("results", {}).get("nethouse", {}).get("summary", {}).get("participant", [])
+        participants = data.get("results", {}).get("nethouse", {}).get("participant", [])
         rows = [{
             "broker": p.get("pname"),
             "buy_volume": p.get("buy", {}).get("volume", 0),
