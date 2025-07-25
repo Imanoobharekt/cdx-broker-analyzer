@@ -106,13 +106,13 @@ selected_date = st.date_input("📅 Choose a reference date", value=datetime.tod
 excode = st.text_input("Exchange Code", value="CDX")
 
 # --- Filters ---
-st.subheader("📊 Volume Spike Filter")
-MIN_PERCENT = st.slider("Minimum % increase over average volume", 50, 500, 80)
-MAX_PERCENT = st.slider("Maximum % increase over average volume", MIN_PERCENT, 1000, 200)
-
 st.subheader("💵 Price Filter")
 MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=1.0)
 MAX_PRICE = st.number_input("Maximum closing price to include", min_value=0.0, value=100.0)
+
+st.subheader("📊 Volume Spike Filter")
+MIN_PERCENT = st.slider("Minimum % increase over average volume", 50, 500, 80)
+MAX_PERCENT = st.slider("Maximum % increase over average volume", MIN_PERCENT, 1000, 200)
 
 st.subheader("🔍 Broker Buy Filter")
 MIN_BROKER_PERCENT = st.slider("Minimum % of total volume bought by broker", 0.0, 100.0, 10.0)
