@@ -214,32 +214,37 @@ if st.button("🚀 Run Analysis"):
         # 2. Find outlier volume days (spikes) for each symbol over the whole range
         grouped = full_df.groupby("symbol")
         spike_rows = []
+        single_day = len(date_range) == 1
         for symbol, group in grouped:
             group = group.sort_values("date")
-            # Allow single-day analysis
-            # if len(group) < 2:
-            #     continue
             avg_vol = group["sharevolume"].astype(float).mean()
             if avg_vol == 0:
                 continue
             max_vol = group["sharevolume"].astype(float).max()
             for _, row in group.iterrows():
                 this_vol = float(row["sharevolume"])
-                vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
-                min_vol = avg_vol * (1 + MIN_PERCENT / 100)
-                max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
-                if (
-                    this_vol == max_vol
-                    and this_vol >= min_vol
-                    and this_vol <= max_vol_limit
-                    and price_ok
-                ):
-                    row = row.copy()
-                    row["avg_volume"] = round(avg_vol, 2)
-                    row["vol_percent"] = round(vol_percent, 2)
-                    spike_rows.append(row)
+                if single_day:
+                    if price_ok:
+                        row = row.copy()
+                        row["avg_volume"] = round(avg_vol, 2)
+                        row["vol_percent"] = 0.0
+                        spike_rows.append(row)
+                else:
+                    vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
+                    min_vol = avg_vol * (1 + MIN_PERCENT / 100)
+                    max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
+                    if (
+                        this_vol == max_vol
+                        and this_vol >= min_vol
+                        and this_vol <= max_vol_limit
+                        and price_ok
+                    ):
+                        row = row.copy()
+                        row["avg_volume"] = round(avg_vol, 2)
+                        row["vol_percent"] = round(vol_percent, 2)
+                        spike_rows.append(row)
 
         if not spike_rows:
             st.session_state['analysis_warning'] = "🧘 No CDX stocks matched the volume percentage criteria."
