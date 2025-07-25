@@ -315,6 +315,11 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
                 return 0
             broker_summary['pct_of_symbol_volume_active_days'] = broker_summary.apply(pct_active_days, axis=1)
 
+            # Filter brokers by MIN_BROKER_PERCENT on either percent column
+            min_broker_percent = st.session_state.get('MIN_BROKER_PERCENT', 0.0)
+            broker_summary = broker_summary[(broker_summary['pct_of_symbol_volume'] >= min_broker_percent) |
+                                            (broker_summary['pct_of_symbol_volume_active_days'] >= min_broker_percent)]
+
             broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
             st.dataframe(broker_summary.reset_index(drop=True))
 elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
