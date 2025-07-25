@@ -258,8 +258,7 @@ if st.button("🚀 Run Analysis"):
                 min_vol = avg_vol * (1 + MIN_PERCENT / 100)
                 max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
                 if (
-                    this_vol == group["sharevolume"].astype(float).max()
-                    and this_vol >= min_vol
+                    this_vol >= min_vol
                     and this_vol <= max_vol_limit
                     and price_ok
                 ):
