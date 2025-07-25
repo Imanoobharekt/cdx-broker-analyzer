@@ -144,13 +144,24 @@ start_date, end_date = st.date_input(
 st.session_state['start_date'] = start_date
 st.session_state['end_date'] = end_date
 
-# Auto-correct if dates are reversed
-if start_date > end_date:
-    st.warning("⚠️ Start date is after end date. Swapping them.")
-    start_date, end_date = end_date, start_date
+# --- Lookback Days for single-day analysis ---
+single_day_selected = start_date == end_date
+if single_day_selected:
+    if 'LOOKBACK_DAYS' not in st.session_state:
+        st.session_state['LOOKBACK_DAYS'] = 20
+    LOOKBACK_DAYS = st.number_input(
+        "Lookback days for average volume (excludes selected day)",
+        min_value=2, max_value=365, value=st.session_state['LOOKBACK_DAYS'], key="lookback_days_input"
+    )
+    st.session_state['LOOKBACK_DAYS'] = LOOKBACK_DAYS
+else:
+    LOOKBACK_DAYS = None
 
 # Generate list of dates
-date_range = pd.date_range(start=start_date, end=end_date).to_pydatetime().tolist()
+if single_day_selected:
+    date_range = [start_date]
+else:
+    date_range = pd.date_range(start=start_date, end=end_date).to_pydatetime().tolist()
 st.write(f"📆 Analyzing {len(date_range)} days of data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
 
 excode = st.text_input("Exchange Code", value="CDX")
@@ -191,15 +202,24 @@ if st.button("🚀 Run Analysis"):
 
     # 1. Fetch EOD data for all days in range
     all_data = []
-    st.info(f"📆 Fetching CDX EOD data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}...")
+    if single_day_selected and LOOKBACK_DAYS:
+        # Fetch lookback days before the selected day (excluding the selected day)
+        lookback_dates = pd.date_range(
+            end=start_date - timedelta(days=1), periods=LOOKBACK_DAYS, freq='B'  # business days
+        ).to_pydatetime().tolist()
+        fetch_dates = lookback_dates + [start_date]
+        st.info(f"📆 Fetching CDX EOD data for {LOOKBACK_DAYS} lookback days and selected day {start_date.strftime('%d-%b-%Y')}")
+    else:
+        fetch_dates = date_range
+        st.info(f"📆 Fetching CDX EOD data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
     progress = st.progress(0)
-    for i, date_obj in enumerate(date_range):
+    for i, date_obj in enumerate(fetch_dates):
         date_str = date_obj.strftime("%Y-%m-%d")
         daily_df = qm.fetch_exchange_history(excode, date_str)
         if not daily_df.empty:
             daily_df["date"] = date_str
             all_data.append(daily_df)
-        progress.progress((i + 1) / len(date_range))
+        progress.progress((i + 1) / len(fetch_dates))
 
     if not all_data:
         st.session_state['analysis_warning'] = "📭 No data was returned for the selected date range."
@@ -211,27 +231,53 @@ if st.button("🚀 Run Analysis"):
         st.session_state['full_df_head'] = full_df.head(50)
         st.session_state['full_df'] = full_df
 
-        # 2. Find outlier volume days (spikes) for each symbol over the whole range
+        # 2. Find outlier volume days (spikes) for each symbol
         grouped = full_df.groupby("symbol")
         spike_rows = []
-        single_day = len(date_range) == 1
-        for symbol, group in grouped:
-            group = group.sort_values("date")
-            avg_vol = group["sharevolume"].astype(float).mean()
-            if avg_vol == 0:
-                continue
-            max_vol = group["sharevolume"].astype(float).max()
-            for _, row in group.iterrows():
+        if single_day_selected and LOOKBACK_DAYS:
+            # For each symbol, calculate avg over lookback (excluding selected day), compare selected day
+            selected_day_str = start_date.strftime("%Y-%m-%d")
+            for symbol, group in grouped:
+                group = group.sort_values("date")
+                # Exclude selected day for avg
+                lookback_group = group[group['date'] != selected_day_str]
+                if lookback_group.empty:
+                    continue
+                avg_vol = lookback_group["sharevolume"].astype(float).mean()
+                if avg_vol == 0:
+                    continue
+                # Get row for selected day
+                selected_row = group[group['date'] == selected_day_str]
+                if selected_row.empty:
+                    continue
+                row = selected_row.iloc[0].copy()
                 this_vol = float(row["sharevolume"])
+                vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
-                if single_day:
-                    if price_ok:
-                        row = row.copy()
-                        row["avg_volume"] = round(avg_vol, 2)
-                        row["vol_percent"] = 0.0
-                        spike_rows.append(row)
-                else:
+                min_vol = avg_vol * (1 + MIN_PERCENT / 100)
+                max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
+                if (
+                    this_vol == group["sharevolume"].astype(float).max()
+                    and this_vol >= min_vol
+                    and this_vol <= max_vol_limit
+                    and price_ok
+                ):
+                    row["avg_volume"] = round(avg_vol, 2)
+                    row["vol_percent"] = round(vol_percent, 2)
+                    spike_rows.append(row)
+        else:
+            # ...existing multi-day logic...
+            for symbol, group in grouped:
+                group = group.sort_values("date")
+                avg_vol = group["sharevolume"].astype(float).mean()
+                if avg_vol == 0:
+                    continue
+                max_vol = group["sharevolume"].astype(float).max()
+                for _, row in group.iterrows():
+                    this_vol = float(row["sharevolume"])
+                    price = float(row.get("close", 0))
+                    price_ok = MIN_PRICE <= price <= MAX_PRICE
                     vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
                     min_vol = avg_vol * (1 + MIN_PERCENT / 100)
                     max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
