@@ -78,20 +78,31 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
             return pd.DataFrame()
 
         data = response.json()
-        participants = data.get("results", {}).get("nethouse", {}).get("participant", [])
-        rows = [{
-            "broker": p.get("pname"),
-            "buy_volume": p.get("buy", {}).get("volume", 0),
-            "sell_volume": p.get("sell", {}).get("volume", 0),
-            "net_volume": p.get("netvol", 0),
-            "buy_pct": p.get("buy", {}).get("volpct", 0),
-            "sell_pct": p.get("sell", {}).get("volpct", 0)
-        } for p in participants]
-        return pd.DataFrame(rows)
-    except Exception as e:
-        st.error(f"⚠️ Failed to fetch Net House for {symbol}: {e}")
-        return pd.DataFrame()
-
+        participants = data.get("results", {}).get("nethouse", {}).get("summary", {}).get("participant", [])
+        rows = []
+        
+        for p in participants:
+            buy_volume = p.get("buy", {}).get("volume", 0)
+            sell_volume = p.get("sell", {}).get("volume", 0)
+            total_volume = p.get("volume", 0)
+            buy_pct = p.get("buy", {}).get("volpct", 0)
+        
+            # Skip brokers with no activity
+            if buy_volume == 0 and sell_volume == 0:
+                continue
+        
+            rows.append({
+                "broker": p.get("pname"),
+                "buy_volume": buy_volume,
+                "sell_volume": sell_volume,
+                "total_volume": total_volume,
+                "buy_pct": buy_pct,
+                "sell_pct": p.get("sell", {}).get("volpct", 0),
+                "net_volume": p.get("netvol", 0),
+                "net_value": p.get("netval", 0)
+            })
+    return pd.DataFrame(rows)
+    
 # === STREAMLIT UI ===
 st.set_page_config(page_title="CDX Broker Volume Analyzer", layout="wide")
 st.title("📈 CDX Broker Volume Spike Analyzer")
@@ -198,6 +209,7 @@ if st.button("🚀 Run Analysis"):
 
             # --- Broker Buy Filter ---
             broker_summary = []
+
             for df in nethouse_all:
                 for _, row in df.iterrows():
                     buy_pct = row.get("buy_pct", 0)
@@ -207,14 +219,17 @@ if st.button("🚀 Run Analysis"):
                             "symbol": row["symbol"],
                             "date": row["date"],
                             "buy_volume": row["buy_volume"],
+                            "sell_volume": row["sell_volume"],
+                            "total_volume": row["total_volume"],
                             "quoted_buy_pct": buy_pct
                         })
 
             if broker_summary:
                 broker_df = pd.DataFrame(broker_summary).sort_values(["broker", "buy_volume"], ascending=[True, False])
+                st.subheader("📊 Filtered Broker Activity")
                 st.dataframe(broker_df.reset_index(drop=True))
             else:
-                st.info("📭 No broker buy data matched the minimum % filter.")
+                st.info("📭 No brokers met the filter criteria. Try lowering the minimum % or expanding the date range.")
         else:
             st.info("📭 No broker data to display.")
     else:
