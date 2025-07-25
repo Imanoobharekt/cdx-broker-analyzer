@@ -200,11 +200,12 @@ if st.button("🚀 Run Analysis"):
         progress.progress((i + 1) / len(date_range))
 
     if not all_data:
-        st.warning("📭 No data was returned for the selected date range.")
+        st.session_state['analysis_warning'] = "📭 No data was returned for the selected date range."
+        st.session_state['spikes_df'] = None
     else:
         full_df = pd.concat(all_data, ignore_index=True)
-        st.success(f"✅ Fetched {len(full_df)} rows of EOD data.")
-        st.dataframe(full_df.head(50))
+        st.session_state['analysis_success'] = f"✅ Fetched {len(full_df)} rows of EOD data."
+        st.session_state['full_df_head'] = full_df.head(50)
 
         # 2. Find outlier volume days (spikes) for each symbol over the whole range
         grouped = full_df.groupby("symbol")
@@ -216,15 +217,12 @@ if st.button("🚀 Run Analysis"):
             avg_vol = group["sharevolume"].astype(float).mean()
             if avg_vol == 0:
                 continue
-            # Find the day(s) with the highest volume for this symbol
             max_vol = group["sharevolume"].astype(float).max()
-            # Optionally, you could use a threshold, e.g., only flag if max_vol is at least X% above avg
             for _, row in group.iterrows():
                 this_vol = float(row["sharevolume"])
                 vol_percent = ((this_vol - avg_vol) / avg_vol) * 100
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
-                # Only flag the max volume day(s) and if it meets the percent threshold (X% more than avg)
                 min_vol = avg_vol * (1 + MIN_PERCENT / 100)
                 max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
                 if (
@@ -239,52 +237,63 @@ if st.button("🚀 Run Analysis"):
                     spike_rows.append(row)
 
         if not spike_rows:
-            st.warning("🧘 No CDX stocks matched the volume percentage criteria.")
+            st.session_state['analysis_warning'] = "🧘 No CDX stocks matched the volume percentage criteria."
+            st.session_state['spikes_df'] = None
         else:
             spikes_df = pd.DataFrame(spike_rows).sort_values(["symbol", "date", "vol_percent"], ascending=[True, True, False])
-            st.subheader("🎯 Outlier Volume Stocks & Days (Full Table)")
-            outlier_table = spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True)
-            st.dataframe(outlier_table)
+            st.session_state['spikes_df'] = spikes_df
+            st.session_state['analysis_warning'] = None
+            st.session_state['analysis_success'] = None
+            st.session_state['outlier_table'] = spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True)
 
-            # --- Search/select for broker summary ---
-            st.subheader("🔎 Broker Activity for Outlier Stocks (Aggregated Over Date Range)")
-            outlier_symbols = spikes_df["symbol"].unique().tolist()
-            if outlier_symbols:
-                selected_symbol = st.selectbox(
-                    "Select a stock to view broker summary:",
-                    options=outlier_symbols,
-                    index=0,
-                    key="broker_symbol_select"
-                )
-                st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
-                # Aggregate broker data for all days in range for this symbol
-                broker_frames = []
-                for date_obj in date_range:
-                    date_str = date_obj.strftime("%Y-%m-%d")
-                    nethouse_df = fetch_nethouse_summary(selected_symbol, WM_ID, qm.sid, date_str)
-                    if not nethouse_df.empty:
-                        nethouse_df["date"] = date_str
-                        broker_frames.append(nethouse_df)
-                if not broker_frames:
-                    st.info("No broker data for this stock in the date range.")
-                else:
-                    all_brokers = pd.concat(broker_frames, ignore_index=True)
-                    # Ensure numeric columns for aggregation
-                    for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
-                        all_brokers[col] = pd.to_numeric(all_brokers[col], errors='coerce').fillna(0)
-                    # Aggregate by broker
-                    broker_summary = all_brokers.groupby("broker").agg({
-                        "buy_volume": "sum",
-                        "sell_volume": "sum",
-                        "total_volume": "sum",
-                        "net_volume": "sum",
-                        "net_value": "sum"
-                    }).reset_index()
-                    # Calculate % of total symbol volume for each broker
-                    total_symbol_volume = broker_summary["buy_volume"].sum() + broker_summary["sell_volume"].sum()
-                    if total_symbol_volume == 0:
-                        broker_summary["pct_of_symbol_volume"] = 0
-                    else:
-                        broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_volume) * 100
-                    broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
-                    st.dataframe(broker_summary.reset_index(drop=True))
+# --- Show analysis results if available ---
+if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None:
+    spikes_df = st.session_state['spikes_df']
+    st.subheader("🎯 Outlier Volume Stocks & Days (Full Table)")
+    outlier_table = st.session_state['outlier_table']
+    st.dataframe(outlier_table)
+
+    # --- Search/select for broker summary ---
+    st.subheader("🔎 Broker Activity for Outlier Stocks (Aggregated Over Date Range)")
+    outlier_symbols = spikes_df["symbol"].unique().tolist()
+    if outlier_symbols:
+        selected_symbol = st.selectbox(
+            "Select a stock to view broker summary:",
+            options=outlier_symbols,
+            index=0,
+            key="broker_symbol_select"
+        )
+        st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
+        # Aggregate broker data for all days in range for this symbol
+        broker_frames = []
+        for date_obj in date_range:
+            date_str = date_obj.strftime("%Y-%m-%d")
+            nethouse_df = fetch_nethouse_summary(selected_symbol, WM_ID, st.session_state.get('sid', ''), date_str)
+            if not nethouse_df.empty:
+                nethouse_df["date"] = date_str
+                broker_frames.append(nethouse_df)
+        if not broker_frames:
+            st.info("No broker data for this stock in the date range.")
+        else:
+            all_brokers = pd.concat(broker_frames, ignore_index=True)
+            for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
+                all_brokers[col] = pd.to_numeric(all_brokers[col], errors='coerce').fillna(0)
+            broker_summary = all_brokers.groupby("broker").agg({
+                "buy_volume": "sum",
+                "sell_volume": "sum",
+                "total_volume": "sum",
+                "net_volume": "sum",
+                "net_value": "sum"
+            }).reset_index()
+            total_symbol_volume = broker_summary["buy_volume"].sum() + broker_summary["sell_volume"].sum()
+            if total_symbol_volume == 0:
+                broker_summary["pct_of_symbol_volume"] = 0
+            else:
+                broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_volume) * 100
+            broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
+            st.dataframe(broker_summary.reset_index(drop=True))
+elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
+    st.warning(st.session_state['analysis_warning'])
+elif 'analysis_success' in st.session_state and st.session_state['analysis_success']:
+    st.success(st.session_state['analysis_success'])
+    st.dataframe(st.session_state['full_df_head'])
