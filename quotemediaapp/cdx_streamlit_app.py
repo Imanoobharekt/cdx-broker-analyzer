@@ -200,15 +200,15 @@ if st.button("🚀 Run Analysis"):
             broker_summary = []
             for df in nethouse_all:
                 for _, row in df.iterrows():
-                buy_pct = row.get("buy_pct", 0)
-                if buy_pct >= MIN_BROKER_PERCENT:
-                    broker_summary.append({
-                        "broker": row["broker"],
-                        "symbol": row["symbol"],
-                        "date": row["date"],
-                        "buy_volume": row["buy_volume"],
-                        "quoted_buy_pct": buy_pct
-                    })
+                    buy_pct = row.get("buy_pct", 0)
+                    if buy_pct >= MIN_BROKER_PERCENT:
+                        broker_summary.append({
+                            "broker": row["broker"],
+                            "symbol": row["symbol"],
+                            "date": row["date"],
+                            "buy_volume": row["buy_volume"],
+                            "quoted_buy_pct": buy_pct
+                        })
 
             if broker_summary:
                 broker_df = pd.DataFrame(broker_summary).sort_values(["broker", "buy_volume"], ascending=[True, False])
