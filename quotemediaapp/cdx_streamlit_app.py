@@ -301,6 +301,20 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
                 broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_eod_volume) * 100
             else:
                 broker_summary["pct_of_symbol_volume"] = 0
+
+            # Also calculate pct using only EOD volume for days where broker had activity
+            def pct_active_days(row):
+                broker = row['broker']
+                # Get all dates where this broker had activity
+                active_dates = all_brokers[all_brokers['broker'] == broker]['date'].unique()
+                if full_df is not None:
+                    symbol_df = full_df[full_df['symbol'] == selected_symbol]
+                    eod_on_active = symbol_df[symbol_df['date'].isin(active_dates)]['sharevolume'].astype(float).sum()
+                    if eod_on_active > 0:
+                        return (row['buy_volume'] / eod_on_active) * 100
+                return 0
+            broker_summary['pct_of_symbol_volume_active_days'] = broker_summary.apply(pct_active_days, axis=1)
+
             broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
             st.dataframe(broker_summary.reset_index(drop=True))
 elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
