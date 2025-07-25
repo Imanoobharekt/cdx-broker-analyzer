@@ -151,124 +151,71 @@ MIN_BROKER_PERCENT = st.slider("Minimum % of total volume bought by broker", 0.0
 if st.button("🚀 Run Analysis"):
     qm = QuoteMediaExchangeHistory(WM_ID, USERNAME, PASSWORD)
 
-    # Initialize list to collect daily data
+    # 1. Fetch EOD data for all days in range
     all_data = []
-    
-    # Show progress bar
     st.info(f"📆 Fetching CDX EOD data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}...")
     progress = st.progress(0)
-    
-    # Loop through each date in the range
     for i, date_obj in enumerate(date_range):
         date_str = date_obj.strftime("%Y-%m-%d")
         daily_df = qm.fetch_exchange_history(excode, date_str)
-        
         if not daily_df.empty:
-            daily_df["date"] = date_str  # Ensure date column is present
+            daily_df["date"] = date_str
             all_data.append(daily_df)
-        
         progress.progress((i + 1) / len(date_range))
-    
-    # Combine all daily data into one DataFrame
-    if all_data:
+
+    if not all_data:
+        st.warning("📭 No data was returned for the selected date range.")
+    else:
         full_df = pd.concat(all_data, ignore_index=True)
         st.success(f"✅ Fetched {len(full_df)} rows of EOD data.")
-        st.dataframe(full_df.head(50))  # Preview first 50 rows
-    else:
-        st.warning("📭 No data was returned for the selected date range.")
+        st.dataframe(full_df.head(50))
 
-        # --- Volume Spike Detection ---
+        # 2. Find outlier volume days (spikes) for each symbol
         grouped = full_df.groupby("symbol")
         spike_rows = []
-        
         for symbol, group in grouped:
             group = group.sort_values("date")
             if len(group) < 5:
                 continue
-        
-            historical = group.iloc[:-1]
-            latest = group.iloc[-1].copy()
-        
-            volumes = historical["sharevolume"].astype(float)
-            avg_vol = volumes.mean()
-            if avg_vol == 0:
-                continue
-        
-            latest_vol = float(latest["sharevolume"])
-            vol_percent = (latest_vol / avg_vol) * 100
-            price = float(latest.get("close", 0))
-            price_ok = MIN_PRICE <= price <= MAX_PRICE
-        
-            if MIN_PERCENT <= vol_percent <= MAX_PERCENT and price_ok:
-                latest["avg_volume"] = round(avg_vol, 2)
-                latest["vol_percent"] = round(vol_percent, 2)
-                spike_rows.append(latest)
-        
-        if spike_rows:
-            spikes_df = pd.DataFrame(spike_rows).sort_values("vol_percent", ascending=False)
-            st.subheader("🎯 Volume Spike Matches")
-            st.dataframe(spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True))
-        
-            # --- Net House Broker Summary ---
-            from collections import defaultdict
-            symbol_broker_data = defaultdict(list)
-        
-            for row in spike_rows:
-                symbol = row["symbol"]
-                for date_obj in date_range:
-                    date_str = date_obj.strftime("%Y-%m-%d")
-                    nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
-                    if not nethouse_df.empty:
-                        nethouse_df["symbol"] = symbol
-                        nethouse_df["date"] = date_str
-                        symbol_broker_data[symbol].append(nethouse_df)
-        
-            # Combine all broker data
-            nethouse_all = [df for dfs in symbol_broker_data.values() for df in dfs]
-        
-            if nethouse_all:
-                final_df = pd.concat(nethouse_all, ignore_index=True)
-                st.subheader("📁 Net House Broker Summary")
-                st.dataframe(final_df.reset_index(drop=True))
-        
-                # --- Aggregated Broker Activity ---
-                broker_summary = []
-                symbol_volumes = full_df.groupby("symbol")["sharevolume"].sum().to_dict()
-        
-                for symbol, dfs in symbol_broker_data.items():
-                    combined_df = pd.concat(dfs, ignore_index=True)
-                    total_symbol_volume = symbol_volumes.get(symbol, 0)
-        
-                    broker_agg = defaultdict(lambda: {"buy_volume": 0, "sell_volume": 0})
-        
-                    for _, row in combined_df.iterrows():
-                        broker = row["broker"]
-                        broker_agg[broker]["buy_volume"] += row["buy_volume"]
-                        broker_agg[broker]["sell_volume"] += row["sell_volume"]
-        
-                    for broker, vols in broker_agg.items():
-                        buy_volume = vols["buy_volume"]
-                        sell_volume = vols["sell_volume"]
-                        total_broker_volume = buy_volume + sell_volume
-                        broker_pct_of_symbol_volume = (buy_volume / total_symbol_volume) * 100 if total_symbol_volume > 0 else 0
-        
-                        if broker_pct_of_symbol_volume >= MIN_BROKER_PERCENT:
-                            broker_summary.append({
-                                "broker": broker,
-                                "symbol": symbol,
-                                "buy_volume": buy_volume,
-                                "sell_volume": sell_volume,
-                                "total_volume": total_broker_volume,
-                                "pct_of_symbol_volume": round(broker_pct_of_symbol_volume, 2)
-                            })
-        
-                if broker_summary:
-                    broker_df = pd.DataFrame(broker_summary).sort_values(["symbol", "broker", "buy_volume"], ascending=[True, True, False])
-                    st.subheader("📊 Aggregated Broker Activity Across Date Range")
-                    st.dataframe(broker_df.reset_index(drop=True))
-                else:
-                    st.info("📭 No brokers met the filter criteria across the full date range.")
-            else:
-                st.info("📭 No broker data found for spike symbols.")
-        else:
+            # For each row, compare to average of all other days for that symbol
+            for idx, row in group.iterrows():
+                other = group.drop(idx)
+                if other.empty:
+                    continue
+                avg_vol = other["sharevolume"].astype(float).mean()
+                if avg_vol == 0:
+                    continue
+                this_vol = float(row["sharevolume"])
+                vol_percent = (this_vol / avg_vol) * 100
+                price = float(row.get("close", 0))
+                price_ok = MIN_PRICE <= price <= MAX_PRICE
+                if MIN_PERCENT <= vol_percent <= MAX_PERCENT and price_ok:
+                    row = row.copy()
+                    row["avg_volume"] = round(avg_vol, 2)
+                    row["vol_percent"] = round(vol_percent, 2)
+                    spike_rows.append(row)
+
+        if not spike_rows:
             st.warning("🧘 No CDX stocks matched the volume percentage criteria.")
+        else:
+            spikes_df = pd.DataFrame(spike_rows).sort_values(["symbol", "date", "vol_percent"], ascending=[True, True, False])
+            st.subheader("🎯 Outlier Volume Days")
+            st.dataframe(spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True))
+
+            # 3. Fetch broker data for each outlier day (symbol, date)
+            broker_data = []
+            for _, row in spikes_df.iterrows():
+                symbol = row["symbol"]
+                date_str = row["date"]
+                nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
+                if not nethouse_df.empty:
+                    nethouse_df["symbol"] = symbol
+                    nethouse_df["date"] = date_str
+                    broker_data.append(nethouse_df)
+
+            if not broker_data:
+                st.info("� No broker data found for outlier volume days.")
+            else:
+                broker_df = pd.concat(broker_data, ignore_index=True)
+                st.subheader("📁 Broker Data for Outlier Volume Days")
+                st.dataframe(broker_df.reset_index(drop=True))
