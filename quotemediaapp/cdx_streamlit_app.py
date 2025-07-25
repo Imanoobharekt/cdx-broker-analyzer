@@ -114,15 +114,35 @@ st.set_page_config(page_title="CDX Broker Volume Analyzer", layout="wide")
 st.title("📈 CDX Broker Volume Spike Analyzer")
 
 # --- Credentials ---
-WM_ID = st.text_input("Webmaster ID")
-USERNAME = st.text_input("Username")
-PASSWORD = st.text_input("Password", type="password")
+
+# --- Use session state for credentials and filters ---
+if 'WM_ID' not in st.session_state:
+    st.session_state['WM_ID'] = ''
+if 'USERNAME' not in st.session_state:
+    st.session_state['USERNAME'] = ''
+if 'PASSWORD' not in st.session_state:
+    st.session_state['PASSWORD'] = ''
+
+WM_ID = st.text_input("Webmaster ID", value=st.session_state['WM_ID'], key="wmid_input")
+USERNAME = st.text_input("Username", value=st.session_state['USERNAME'], key="username_input")
+PASSWORD = st.text_input("Password", type="password", value=st.session_state['PASSWORD'], key="password_input")
+
+st.session_state['WM_ID'] = WM_ID
+st.session_state['USERNAME'] = USERNAME
+st.session_state['PASSWORD'] = PASSWORD
 
 # --- Date Picker ---
+
+if 'start_date' not in st.session_state or 'end_date' not in st.session_state:
+    st.session_state['start_date'] = datetime.today() - timedelta(days=7)
+    st.session_state['end_date'] = datetime.today()
+
 start_date, end_date = st.date_input(
     "📅 Select date range",
-    value=[datetime.today() - timedelta(days=7), datetime.today()]
+    value=[st.session_state['start_date'], st.session_state['end_date']]
 )
+st.session_state['start_date'] = start_date
+st.session_state['end_date'] = end_date
 
 # Auto-correct if dates are reversed
 if start_date > end_date:
@@ -136,16 +156,32 @@ st.write(f"📆 Analyzing {len(date_range)} days of data from {start_date.strfti
 excode = st.text_input("Exchange Code", value="CDX")
 
 # --- Filters ---
+
 st.subheader("💵 Price Filter")
-MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=0.0)
-MAX_PRICE = st.number_input("Maximum closing price to include", min_value=0.0, value=100.0)
+if 'MIN_PRICE' not in st.session_state:
+    st.session_state['MIN_PRICE'] = 0.0
+if 'MAX_PRICE' not in st.session_state:
+    st.session_state['MAX_PRICE'] = 100.0
+MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=st.session_state['MIN_PRICE'], key="min_price_input")
+MAX_PRICE = st.number_input("Maximum closing price to include", min_value=0.0, value=st.session_state['MAX_PRICE'], key="max_price_input")
+st.session_state['MIN_PRICE'] = MIN_PRICE
+st.session_state['MAX_PRICE'] = MAX_PRICE
 
 st.subheader("📊 Volume Spike Filter")
-MIN_PERCENT = st.slider("Minimum % increase over average volume", 0, 500, 80)
-MAX_PERCENT = st.slider("Maximum % increase over average volume", MIN_PERCENT, 1000, 200)
+if 'MIN_PERCENT' not in st.session_state:
+    st.session_state['MIN_PERCENT'] = 80
+if 'MAX_PERCENT' not in st.session_state:
+    st.session_state['MAX_PERCENT'] = 200
+MIN_PERCENT = st.slider("Minimum % increase over average volume", 0, 500, st.session_state['MIN_PERCENT'], key="min_percent_slider")
+MAX_PERCENT = st.slider("Maximum % increase over average volume", MIN_PERCENT, 1000, st.session_state['MAX_PERCENT'], key="max_percent_slider")
+st.session_state['MIN_PERCENT'] = MIN_PERCENT
+st.session_state['MAX_PERCENT'] = MAX_PERCENT
 
 st.subheader("🔍 Broker Buy Filter")
-MIN_BROKER_PERCENT = st.slider("Minimum % of total volume bought by broker", 0.0, 100.0, 10.0)
+if 'MIN_BROKER_PERCENT' not in st.session_state:
+    st.session_state['MIN_BROKER_PERCENT'] = 10.0
+MIN_BROKER_PERCENT = st.slider("Minimum % of total volume bought by broker", 0.0, 100.0, st.session_state['MIN_BROKER_PERCENT'], key="min_broker_percent_slider")
+st.session_state['MIN_BROKER_PERCENT'] = MIN_BROKER_PERCENT
 
 # --- Run Button ---
 if st.button("🚀 Run Analysis"):
