@@ -204,10 +204,12 @@ if st.button("🚀 Run Analysis"):
     if not all_data:
         st.session_state['analysis_warning'] = "📭 No data was returned for the selected date range."
         st.session_state['spikes_df'] = None
+        st.session_state['full_df'] = None
     else:
         full_df = pd.concat(all_data, ignore_index=True)
         st.session_state['analysis_success'] = f"✅ Fetched {len(full_df)} rows of EOD data."
         st.session_state['full_df_head'] = full_df.head(50)
+        st.session_state['full_df'] = full_df
 
         # 2. Find outlier volume days (spikes) for each symbol over the whole range
         grouped = full_df.groupby("symbol")
@@ -287,11 +289,18 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
                 "net_volume": "sum",
                 "net_value": "sum"
             }).reset_index()
-            total_symbol_volume = broker_summary["buy_volume"].sum() + broker_summary["sell_volume"].sum()
-            if total_symbol_volume == 0:
-                broker_summary["pct_of_symbol_volume"] = 0
+            # Use EOD total volume for the symbol as denominator
+            full_df = st.session_state.get('full_df', None)
+            if full_df is None:
+                st.warning("Full EOD data not available for percent calculation.")
+                total_symbol_eod_volume = None
             else:
-                broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_volume) * 100
+                symbol_df = full_df[full_df['symbol'] == selected_symbol]
+                total_symbol_eod_volume = symbol_df['sharevolume'].astype(float).sum()
+            if total_symbol_eod_volume and total_symbol_eod_volume > 0:
+                broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_eod_volume) * 100
+            else:
+                broker_summary["pct_of_symbol_volume"] = 0
             broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
             st.dataframe(broker_summary.reset_index(drop=True))
 elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
