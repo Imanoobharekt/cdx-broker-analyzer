@@ -107,7 +107,7 @@ excode = st.text_input("Exchange Code", value="CDX")
 
 # --- Filters ---
 st.subheader("💵 Price Filter")
-MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=1.0)
+MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=0.0)
 MAX_PRICE = st.number_input("Maximum closing price to include", min_value=0.0, value=100.0)
 
 st.subheader("📊 Volume Spike Filter")
