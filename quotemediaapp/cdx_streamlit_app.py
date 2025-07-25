@@ -184,7 +184,7 @@ if st.button("🚀 Run Analysis"):
         for symbol, group in grouped:
             group = group.sort_values("date")
             if len(group) < 5:
-                continue  # Not enough data to compare
+                continue
         
             historical = group.iloc[:-1]
             latest = group.iloc[-1].copy()
@@ -204,73 +204,71 @@ if st.button("🚀 Run Analysis"):
                 latest["vol_percent"] = round(vol_percent, 2)
                 spike_rows.append(latest)
         
-        spikes_df = pd.DataFrame(spike_rows).sort_values("vol_percent", ascending=False)
-        st.subheader("🎯 Volume Spike Matches")
-        st.dataframe(spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True))
-
-        from collections import defaultdict
+        if spike_rows:
+            spikes_df = pd.DataFrame(spike_rows).sort_values("vol_percent", ascending=False)
+            st.subheader("🎯 Volume Spike Matches")
+            st.dataframe(spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True))
         
-        symbol_broker_data = defaultdict(list)
+            # --- Net House Broker Summary ---
+            from collections import defaultdict
+            symbol_broker_data = defaultdict(list)
         
-        for row in spike_rows:
-            symbol = row["symbol"]
-            for date_obj in date_range:
-                date_str = date_obj.strftime("%Y-%m-%d")
-                nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
-                if not nethouse_df.empty:
-                    nethouse_df["symbol"] = symbol
-                    nethouse_df["date"] = date_str
-                    symbol_broker_data[symbol].append(nethouse_df)
+            for row in spike_rows:
+                symbol = row["symbol"]
+                for date_obj in date_range:
+                    date_str = date_obj.strftime("%Y-%m-%d")
+                    nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
+                    if not nethouse_df.empty:
+                        nethouse_df["symbol"] = symbol
+                        nethouse_df["date"] = date_str
+                        symbol_broker_data[symbol].append(nethouse_df)
         
-        # Combine all broker data
-        nethouse_all = [df for dfs in symbol_broker_data.values() for df in dfs]
+            # Combine all broker data
+            nethouse_all = [df for dfs in symbol_broker_data.values() for df in dfs]
         
-        if nethouse_all:
-            final_df = pd.concat(nethouse_all, ignore_index=True)
-            st.subheader("📁 Net House Broker Summary")
-            st.dataframe(final_df.reset_index(drop=True))
+            if nethouse_all:
+                final_df = pd.concat(nethouse_all, ignore_index=True)
+                st.subheader("📁 Net House Broker Summary")
+                st.dataframe(final_df.reset_index(drop=True))
+        
+                # --- Aggregated Broker Activity ---
+                broker_summary = []
+                symbol_volumes = full_df.groupby("symbol")["sharevolume"].sum().to_dict()
+        
+                for symbol, dfs in symbol_broker_data.items():
+                    combined_df = pd.concat(dfs, ignore_index=True)
+                    total_symbol_volume = symbol_volumes.get(symbol, 0)
+        
+                    broker_agg = defaultdict(lambda: {"buy_volume": 0, "sell_volume": 0})
+        
+                    for _, row in combined_df.iterrows():
+                        broker = row["broker"]
+                        broker_agg[broker]["buy_volume"] += row["buy_volume"]
+                        broker_agg[broker]["sell_volume"] += row["sell_volume"]
+        
+                    for broker, vols in broker_agg.items():
+                        buy_volume = vols["buy_volume"]
+                        sell_volume = vols["sell_volume"]
+                        total_broker_volume = buy_volume + sell_volume
+                        broker_pct_of_symbol_volume = (buy_volume / total_symbol_volume) * 100 if total_symbol_volume > 0 else 0
+        
+                        if broker_pct_of_symbol_volume >= MIN_BROKER_PERCENT:
+                            broker_summary.append({
+                                "broker": broker,
+                                "symbol": symbol,
+                                "buy_volume": buy_volume,
+                                "sell_volume": sell_volume,
+                                "total_volume": total_broker_volume,
+                                "pct_of_symbol_volume": round(broker_pct_of_symbol_volume, 2)
+                            })
+        
+                if broker_summary:
+                    broker_df = pd.DataFrame(broker_summary).sort_values(["symbol", "broker", "buy_volume"], ascending=[True, True, False])
+                    st.subheader("📊 Aggregated Broker Activity Across Date Range")
+                    st.dataframe(broker_df.reset_index(drop=True))
+                else:
+                    st.info("📭 No brokers met the filter criteria across the full date range.")
+            else:
+                st.info("📭 No broker data found for spike symbols.")
         else:
-            st.info("📭 No broker data found for spike symbols.")
-
-broker_summary = []
-
-# Total volume per symbol from full_df
-symbol_volumes = full_df.groupby("symbol")["sharevolume"].sum().to_dict()
-
-for symbol, dfs in symbol_broker_data.items():
-    combined_df = pd.concat(dfs, ignore_index=True)
-    total_symbol_volume = symbol_volumes.get(symbol, 0)
-
-    broker_agg = defaultdict(lambda: {"buy_volume": 0, "sell_volume": 0})
-
-    for _, row in combined_df.iterrows():
-        broker = row["broker"]
-        broker_agg[broker]["buy_volume"] += row["buy_volume"]
-        broker_agg[broker]["sell_volume"] += row["sell_volume"]
-
-    for broker, vols in broker_agg.items():
-        buy_volume = vols["buy_volume"]
-        sell_volume = vols["sell_volume"]
-        total_broker_volume = buy_volume + sell_volume
-        broker_pct_of_symbol_volume = (buy_volume / total_symbol_volume) * 100 if total_symbol_volume > 0 else 0
-
-        if broker_pct_of_symbol_volume >= MIN_BROKER_PERCENT:
-            broker_summary.append({
-                "broker": broker,
-                "symbol": symbol,
-                "buy_volume": buy_volume,
-                "sell_volume": sell_volume,
-                "total_volume": total_broker_volume,
-                "pct_of_symbol_volume": round(broker_pct_of_symbol_volume, 2)
-            })
-
-if broker_summary:
-    broker_df = pd.DataFrame(broker_summary).sort_values(["symbol", "broker", "buy_volume"], ascending=[True, True, False])
-    st.subheader("📊 Aggregated Broker Activity Across Date Range")
-    st.dataframe(broker_df.reset_index(drop=True))
-else:
-    st.info("📭 No brokers met the filter criteria across the full date range.")
-        else:
-            st.info("📭 No broker data to display.")
-    else:
-        st.warning("🧘 No CDX stocks matched the volume percentage criteria.")
+            st.warning("🧘 No CDX stocks matched the volume percentage criteria.")
