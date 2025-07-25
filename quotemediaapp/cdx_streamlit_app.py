@@ -143,7 +143,7 @@ if st.button("🚀 Run Analysis"):
         df = qm.fetch_exchange_history(excode, date)
         if not df.empty:
             all_data.append(df)
-        progress.progress((i + 1) / 30)
+        progress.progress((i + 1) / len(date_range))
 
     if all_data:
         full_df = pd.concat(all_data, ignore_index=True)
