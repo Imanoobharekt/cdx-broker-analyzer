@@ -216,15 +216,16 @@ if st.button("🚀 Run Analysis"):
         spike_rows = []
         for symbol, group in grouped:
             group = group.sort_values("date")
-            if len(group) < 2:
-                continue
+            # Allow single-day analysis
+            # if len(group) < 2:
+            #     continue
             avg_vol = group["sharevolume"].astype(float).mean()
             if avg_vol == 0:
                 continue
             max_vol = group["sharevolume"].astype(float).max()
             for _, row in group.iterrows():
                 this_vol = float(row["sharevolume"])
-                vol_percent = ((this_vol - avg_vol) / avg_vol) * 100
+                vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
                 min_vol = avg_vol * (1 + MIN_PERCENT / 100)
