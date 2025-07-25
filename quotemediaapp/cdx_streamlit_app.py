@@ -209,43 +209,46 @@ if st.button("🚀 Run Analysis"):
             st.subheader("🎯 Outlier Volume Stocks & Days (Full Table)")
             outlier_table = spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True)
             st.dataframe(outlier_table)
-            csv = outlier_table.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Outlier Stocks Table as CSV", csv, "outlier_stocks.csv", "text/csv")
 
-            # For each outlier stock, aggregate broker data for the whole date range
-            st.subheader("� Broker Activity for Outlier Stocks (Aggregated Over Date Range)")
-            for symbol in spikes_df["symbol"].unique():
-                st.markdown(f"### {symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
+            # --- Search/select for broker summary ---
+            st.subheader("🔎 Broker Activity for Outlier Stocks (Aggregated Over Date Range)")
+            outlier_symbols = spikes_df["symbol"].unique().tolist()
+            if outlier_symbols:
+                selected_symbol = st.selectbox(
+                    "Select a stock to view broker summary:",
+                    options=outlier_symbols,
+                    index=0,
+                    key="broker_symbol_select"
+                )
+                st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
                 # Aggregate broker data for all days in range for this symbol
                 broker_frames = []
                 for date_obj in date_range:
                     date_str = date_obj.strftime("%Y-%m-%d")
-                    nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
+                    nethouse_df = fetch_nethouse_summary(selected_symbol, WM_ID, qm.sid, date_str)
                     if not nethouse_df.empty:
                         nethouse_df["date"] = date_str
                         broker_frames.append(nethouse_df)
                 if not broker_frames:
                     st.info("No broker data for this stock in the date range.")
-                    continue
-                all_brokers = pd.concat(broker_frames, ignore_index=True)
-                # Ensure numeric columns for aggregation
-                for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
-                    all_brokers[col] = pd.to_numeric(all_brokers[col], errors='coerce').fillna(0)
-                # Aggregate by broker
-                broker_summary = all_brokers.groupby("broker").agg({
-                    "buy_volume": "sum",
-                    "sell_volume": "sum",
-                    "total_volume": "sum",
-                    "net_volume": "sum",
-                    "net_value": "sum"
-                }).reset_index()
-                # Calculate % of total symbol volume for each broker
-                total_symbol_volume = broker_summary["buy_volume"].sum() + broker_summary["sell_volume"].sum()
-                if total_symbol_volume == 0:
-                    broker_summary["pct_of_symbol_volume"] = 0
                 else:
-                    broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_volume) * 100
-                broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
-                st.dataframe(broker_summary.reset_index(drop=True))
-                csv_broker = broker_summary.to_csv(index=False).encode('utf-8')
-                st.download_button(f"Download {symbol} Broker Summary as CSV", csv_broker, f"{symbol}_broker_summary.csv", "text/csv")
+                    all_brokers = pd.concat(broker_frames, ignore_index=True)
+                    # Ensure numeric columns for aggregation
+                    for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
+                        all_brokers[col] = pd.to_numeric(all_brokers[col], errors='coerce').fillna(0)
+                    # Aggregate by broker
+                    broker_summary = all_brokers.groupby("broker").agg({
+                        "buy_volume": "sum",
+                        "sell_volume": "sum",
+                        "total_volume": "sum",
+                        "net_volume": "sum",
+                        "net_value": "sum"
+                    }).reset_index()
+                    # Calculate % of total symbol volume for each broker
+                    total_symbol_volume = broker_summary["buy_volume"].sum() + broker_summary["sell_volume"].sum()
+                    if total_symbol_volume == 0:
+                        broker_summary["pct_of_symbol_volume"] = 0
+                    else:
+                        broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_volume) * 100
+                    broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
+                    st.dataframe(broker_summary.reset_index(drop=True))
