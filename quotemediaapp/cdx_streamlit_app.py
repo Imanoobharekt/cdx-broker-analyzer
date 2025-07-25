@@ -101,7 +101,7 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
                 "net_volume": p.get("netvol", 0),
                 "net_value": p.get("netval", 0)
             })
-    return pd.DataFrame(rows)
+        return pd.DataFrame(rows)
     
 # === STREAMLIT UI ===
 st.set_page_config(page_title="CDX Broker Volume Analyzer", layout="wide")
