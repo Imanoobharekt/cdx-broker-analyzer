@@ -170,26 +170,26 @@ if st.button("🚀 Run Analysis"):
         st.success(f"✅ Fetched {len(full_df)} rows of EOD data.")
         st.dataframe(full_df.head(50))
 
-        # 2. Find outlier volume days (spikes) for each symbol
+        # 2. Find outlier volume days (spikes) for each symbol over the whole range
         grouped = full_df.groupby("symbol")
         spike_rows = []
         for symbol, group in grouped:
             group = group.sort_values("date")
-            if len(group) < 5:
+            if len(group) < 2:
                 continue
-            # For each row, compare to average of all other days for that symbol
-            for idx, row in group.iterrows():
-                other = group.drop(idx)
-                if other.empty:
-                    continue
-                avg_vol = other["sharevolume"].astype(float).mean()
-                if avg_vol == 0:
-                    continue
+            avg_vol = group["sharevolume"].astype(float).mean()
+            if avg_vol == 0:
+                continue
+            # Find the day(s) with the highest volume for this symbol
+            max_vol = group["sharevolume"].astype(float).max()
+            # Optionally, you could use a threshold, e.g., only flag if max_vol is at least X% above avg
+            for _, row in group.iterrows():
                 this_vol = float(row["sharevolume"])
                 vol_percent = (this_vol / avg_vol) * 100
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
-                if MIN_PERCENT <= vol_percent <= MAX_PERCENT and price_ok:
+                # Only flag the max volume day(s) and if it meets the percent threshold
+                if this_vol == max_vol and MIN_PERCENT <= vol_percent <= MAX_PERCENT and price_ok:
                     row = row.copy()
                     row["avg_volume"] = round(avg_vol, 2)
                     row["vol_percent"] = round(vol_percent, 2)
@@ -199,28 +199,43 @@ if st.button("🚀 Run Analysis"):
             st.warning("🧘 No CDX stocks matched the volume percentage criteria.")
         else:
             spikes_df = pd.DataFrame(spike_rows).sort_values(["symbol", "date", "vol_percent"], ascending=[True, True, False])
-            st.subheader("🎯 Outlier Volume Stocks & Days")
-            # List unique outlier stocks
-            outlier_symbols = spikes_df["symbol"].unique().tolist()
-            st.write(f"Found {len(outlier_symbols)} outlier stocks:")
-            st.write(", ".join(outlier_symbols))
-            st.dataframe(spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True))
+            st.subheader("🎯 Outlier Volume Stocks & Days (Full Table)")
+            outlier_table = spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True)
+            st.dataframe(outlier_table)
+            csv = outlier_table.to_csv(index=False).encode('utf-8')
+            st.download_button("Download Outlier Stocks Table as CSV", csv, "outlier_stocks.csv", "text/csv")
 
-            # For each outlier day, show broker breakdown
-            st.subheader("🔎 Broker Breakdown for Outlier Days")
-            for _, row in spikes_df.iterrows():
-                symbol = row["symbol"]
-                date_str = row["date"]
-                st.markdown(f"**{symbol}** on **{date_str}** (Volume: {row['sharevolume']}, Outlier %: {row['vol_percent']})")
-                nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
-                if nethouse_df.empty:
-                    st.info("No broker data for this day.")
+            # For each outlier stock, aggregate broker data for the whole date range
+            st.subheader("� Broker Activity for Outlier Stocks (Aggregated Over Date Range)")
+            for symbol in spikes_df["symbol"].unique():
+                st.markdown(f"### {symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
+                # Aggregate broker data for all days in range for this symbol
+                broker_frames = []
+                for date_obj in date_range:
+                    date_str = date_obj.strftime("%Y-%m-%d")
+                    nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
+                    if not nethouse_df.empty:
+                        nethouse_df["date"] = date_str
+                        broker_frames.append(nethouse_df)
+                if not broker_frames:
+                    st.info("No broker data for this stock in the date range.")
                     continue
-                # Calculate % of total volume for each broker
-                total_day_volume = nethouse_df["buy_volume"].sum() + nethouse_df["sell_volume"].sum()
-                if total_day_volume == 0:
-                    nethouse_df["pct_of_day_volume"] = 0
+                all_brokers = pd.concat(broker_frames, ignore_index=True)
+                # Aggregate by broker
+                broker_summary = all_brokers.groupby("broker").agg({
+                    "buy_volume": "sum",
+                    "sell_volume": "sum",
+                    "total_volume": "sum",
+                    "net_volume": "sum",
+                    "net_value": "sum"
+                }).reset_index()
+                # Calculate % of total symbol volume for each broker
+                total_symbol_volume = broker_summary["buy_volume"].sum() + broker_summary["sell_volume"].sum()
+                if total_symbol_volume == 0:
+                    broker_summary["pct_of_symbol_volume"] = 0
                 else:
-                    nethouse_df["pct_of_day_volume"] = (nethouse_df["buy_volume"] / total_day_volume) * 100
-                nethouse_df = nethouse_df.sort_values("pct_of_day_volume", ascending=False)
-                st.dataframe(nethouse_df[["broker", "buy_volume", "sell_volume", "total_volume", "buy_pct", "sell_pct", "pct_of_day_volume"]].reset_index(drop=True))
+                    broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_volume) * 100
+                broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
+                st.dataframe(broker_summary.reset_index(drop=True))
+                csv_broker = broker_summary.to_csv(index=False).encode('utf-8')
+                st.download_button(f"Download {symbol} Broker Summary as CSV", csv_broker, f"{symbol}_broker_summary.csv", "text/csv")
