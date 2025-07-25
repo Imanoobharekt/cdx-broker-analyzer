@@ -71,6 +71,7 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
         "start": date,
         "end": date
     }
+
     try:
         response = requests.get(url, params=params)
         if response.status_code != 200:
@@ -80,17 +81,17 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
         data = response.json()
         participants = data.get("results", {}).get("nethouse", {}).get("summary", {}).get("participant", [])
         rows = []
-        
+
         for p in participants:
             buy_volume = p.get("buy", {}).get("volume", 0)
             sell_volume = p.get("sell", {}).get("volume", 0)
             total_volume = p.get("volume", 0)
             buy_pct = p.get("buy", {}).get("volpct", 0)
-        
+
             # Skip brokers with no activity
             if buy_volume == 0 and sell_volume == 0:
                 continue
-        
+
             rows.append({
                 "broker": p.get("pname"),
                 "buy_volume": buy_volume,
@@ -101,7 +102,12 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
                 "net_volume": p.get("netvol", 0),
                 "net_value": p.get("netval", 0)
             })
+
         return pd.DataFrame(rows)
+
+    except Exception as e:
+        st.error(f"❌ Error fetching nethouse summary for {symbol}: {e}")
+        return pd.DataFrame()
     
 # === STREAMLIT UI ===
 st.set_page_config(page_title="CDX Broker Volume Analyzer", layout="wide")
