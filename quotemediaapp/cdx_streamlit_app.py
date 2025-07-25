@@ -199,23 +199,28 @@ if st.button("🚀 Run Analysis"):
             st.warning("🧘 No CDX stocks matched the volume percentage criteria.")
         else:
             spikes_df = pd.DataFrame(spike_rows).sort_values(["symbol", "date", "vol_percent"], ascending=[True, True, False])
-            st.subheader("🎯 Outlier Volume Days")
+            st.subheader("🎯 Outlier Volume Stocks & Days")
+            # List unique outlier stocks
+            outlier_symbols = spikes_df["symbol"].unique().tolist()
+            st.write(f"Found {len(outlier_symbols)} outlier stocks:")
+            st.write(", ".join(outlier_symbols))
             st.dataframe(spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True))
 
-            # 3. Fetch broker data for each outlier day (symbol, date)
-            broker_data = []
+            # For each outlier day, show broker breakdown
+            st.subheader("🔎 Broker Breakdown for Outlier Days")
             for _, row in spikes_df.iterrows():
                 symbol = row["symbol"]
                 date_str = row["date"]
+                st.markdown(f"**{symbol}** on **{date_str}** (Volume: {row['sharevolume']}, Outlier %: {row['vol_percent']})")
                 nethouse_df = fetch_nethouse_summary(symbol, WM_ID, qm.sid, date_str)
-                if not nethouse_df.empty:
-                    nethouse_df["symbol"] = symbol
-                    nethouse_df["date"] = date_str
-                    broker_data.append(nethouse_df)
-
-            if not broker_data:
-                st.info("� No broker data found for outlier volume days.")
-            else:
-                broker_df = pd.concat(broker_data, ignore_index=True)
-                st.subheader("📁 Broker Data for Outlier Volume Days")
-                st.dataframe(broker_df.reset_index(drop=True))
+                if nethouse_df.empty:
+                    st.info("No broker data for this day.")
+                    continue
+                # Calculate % of total volume for each broker
+                total_day_volume = nethouse_df["buy_volume"].sum() + nethouse_df["sell_volume"].sum()
+                if total_day_volume == 0:
+                    nethouse_df["pct_of_day_volume"] = 0
+                else:
+                    nethouse_df["pct_of_day_volume"] = (nethouse_df["buy_volume"] / total_day_volume) * 100
+                nethouse_df = nethouse_df.sort_values("pct_of_day_volume", ascending=False)
+                st.dataframe(nethouse_df[["broker", "buy_volume", "sell_volume", "total_volume", "buy_pct", "sell_pct", "pct_of_day_volume"]].reset_index(drop=True))
