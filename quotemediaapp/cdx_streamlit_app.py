@@ -319,16 +319,23 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             key="broker_symbol_select"
         )
         st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
-        # Aggregate broker data for all days in range for this symbol
+        # Aggregate broker data for lookback days (single day mode) or all days in range (multi-day)
         broker_frames = []
-        for date_obj in date_range:
+        if single_day_selected and LOOKBACK_DAYS:
+            lookback_dates = pd.date_range(
+                end=start_date - timedelta(days=1), periods=LOOKBACK_DAYS, freq='B'
+            ).to_pydatetime().tolist()
+            summary_dates = lookback_dates
+        else:
+            summary_dates = date_range
+        for date_obj in summary_dates:
             date_str = date_obj.strftime("%Y-%m-%d")
             nethouse_df = fetch_nethouse_summary(selected_symbol, WM_ID, st.session_state.get('sid', ''), date_str)
             if not nethouse_df.empty:
                 nethouse_df["date"] = date_str
                 broker_frames.append(nethouse_df)
         if not broker_frames:
-            st.info("No broker data for this stock in the date range.")
+            st.info("No broker data for this stock in the selected summary period.")
         else:
             all_brokers = pd.concat(broker_frames, ignore_index=True)
             for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
@@ -346,7 +353,11 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
                 st.warning("Full EOD data not available for percent calculation.")
                 total_symbol_eod_volume = None
             else:
-                symbol_df = full_df[full_df['symbol'] == selected_symbol]
+                if single_day_selected and LOOKBACK_DAYS:
+                    # Use only lookback days for EOD volume
+                    symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'].isin([d.strftime('%Y-%m-%d') for d in lookback_dates]))]
+                else:
+                    symbol_df = full_df[full_df['symbol'] == selected_symbol]
                 total_symbol_eod_volume = symbol_df['sharevolume'].astype(float).sum()
             if total_symbol_eod_volume and total_symbol_eod_volume > 0:
                 broker_summary["pct_of_symbol_volume"] = (broker_summary["buy_volume"] / total_symbol_eod_volume) * 100
@@ -356,10 +367,12 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             # Also calculate pct using only EOD volume for days where broker had activity
             def pct_active_days(row):
                 broker = row['broker']
-                # Get all dates where this broker had activity
                 active_dates = all_brokers[all_brokers['broker'] == broker]['date'].unique()
                 if full_df is not None:
-                    symbol_df = full_df[full_df['symbol'] == selected_symbol]
+                    if single_day_selected and LOOKBACK_DAYS:
+                        symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'].isin([d.strftime('%Y-%m-%d') for d in lookback_dates]))]
+                    else:
+                        symbol_df = full_df[full_df['symbol'] == selected_symbol]
                     eod_on_active = symbol_df[symbol_df['date'].isin(active_dates)]['sharevolume'].astype(float).sum()
                     if eod_on_active > 0:
                         return (row['buy_volume'] / eod_on_active) * 100
