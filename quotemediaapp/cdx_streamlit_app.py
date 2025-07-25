@@ -185,7 +185,9 @@ st.session_state['MIN_BROKER_PERCENT'] = MIN_BROKER_PERCENT
 
 # --- Run Button ---
 if st.button("🚀 Run Analysis"):
+
     qm = QuoteMediaExchangeHistory(WM_ID, USERNAME, PASSWORD)
+    st.session_state['sid'] = qm.sid
 
     # 1. Fetch EOD data for all days in range
     all_data = []
