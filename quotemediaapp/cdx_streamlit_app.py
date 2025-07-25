@@ -221,6 +221,9 @@ if st.button("🚀 Run Analysis"):
                     st.info("No broker data for this stock in the date range.")
                     continue
                 all_brokers = pd.concat(broker_frames, ignore_index=True)
+                # Ensure numeric columns for aggregation
+                for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
+                    all_brokers[col] = pd.to_numeric(all_brokers[col], errors='coerce').fillna(0)
                 # Aggregate by broker
                 broker_summary = all_brokers.groupby("broker").agg({
                     "buy_volume": "sum",
