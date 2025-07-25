@@ -102,7 +102,20 @@ USERNAME = st.text_input("Username")
 PASSWORD = st.text_input("Password", type="password")
 
 # --- Date Picker ---
-selected_date = st.date_input("📅 Choose a reference date", value=datetime.today())
+start_date, end_date = st.date_input(
+    "📅 Select date range",
+    value=[datetime.today() - timedelta(days=7), datetime.today()]
+)
+
+# Auto-correct if dates are reversed
+if start_date > end_date:
+    st.warning("⚠️ Start date is after end date. Swapping them.")
+    start_date, end_date = end_date, start_date
+
+# Generate list of dates
+date_range = pd.date_range(start=start_date, end=end_date).to_pydatetime().tolist()
+st.write(f"📆 Analyzing {len(date_range)} days of data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
+
 excode = st.text_input("Exchange Code", value="CDX")
 
 # --- Filters ---
@@ -122,11 +135,11 @@ if st.button("🚀 Run Analysis"):
     qm = QuoteMediaExchangeHistory(WM_ID, USERNAME, PASSWORD)
 
     all_data = []
-    st.info("📆 Fetching past 30 days of CDX EOD data...")
+    st.info(f"📆 Fetching CDX EOD data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}...")
     progress = st.progress(0)
 
-    for i in range(30):
-        date = (selected_date - timedelta(days=i)).strftime("%Y-%m-%d")
+    for i, date_obj in enumerate(date_range):
+        date = date_obj.strftime("%Y-%m-%d")
         df = qm.fetch_exchange_history(excode, date)
         if not df.empty:
             all_data.append(df)
