@@ -188,8 +188,15 @@ if st.button("🚀 Run Analysis"):
                 vol_percent = (this_vol / avg_vol) * 100
                 price = float(row.get("close", 0))
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
-                # Only flag the max volume day(s) and if it meets the percent threshold
-                if this_vol == max_vol and MIN_PERCENT <= vol_percent <= MAX_PERCENT and price_ok:
+                # Only flag the max volume day(s) and if it meets the percent threshold (X% more than avg)
+                min_vol = avg_vol * (1 + MIN_PERCENT / 100)
+                max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
+                if (
+                    this_vol == max_vol
+                    and this_vol >= min_vol
+                    and this_vol <= max_vol_limit
+                    and price_ok
+                ):
                     row = row.copy()
                     row["avg_volume"] = round(avg_vol, 2)
                     row["vol_percent"] = round(vol_percent, 2)
