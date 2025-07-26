@@ -49,7 +49,11 @@ class QuoteMediaExchangeHistory:
         }
         try:
             response = requests.get(url, params=params)
-            data = response.json()
+            try:
+                data = response.json()
+            except Exception as e:
+                st.error(f"❌ API request failed: {str(e)}\nRaw response: {response.text}")
+                return pd.DataFrame()
             history = data.get("results", {}).get("history", [])
             records = []
             for item in history:
@@ -77,11 +81,13 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
         if response.status_code != 200:
             st.warning(f"⚠️ Unexpected status code {response.status_code} for {symbol}")
             return pd.DataFrame()
-
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception as e:
+            st.error(f"❌ Error fetching nethouse summary for {symbol}: {e}\nRaw response: {response.text}")
+            return pd.DataFrame()
         participants = data.get("results", {}).get("nethouse", {}).get("summary", {}).get("participant", [])
         rows = []
-
         for p in participants:
             buy_volume = p.get("buy", {}).get("volume", 0)
             sell_volume = p.get("sell", {}).get("volume", 0)
