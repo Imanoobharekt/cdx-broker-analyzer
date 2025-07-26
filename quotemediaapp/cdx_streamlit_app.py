@@ -1,33 +1,3 @@
-
-# --- Generate list of dates ---
-if single_day_selected:
-    date_range = [start_date]
-else:
-    date_range = pd.date_range(start=start_date, end=end_date).to_pydatetime().tolist()
-
-# --- Exchange Code ---
-excode = st.text_input("Exchange Code", value="CDX")
-
-# --- Filters ---
-st.subheader("💵 Price Filter")
-if 'MIN_PRICE' not in st.session_state:
-    st.session_state['MIN_PRICE'] = 0.0
-if 'MAX_PRICE' not in st.session_state:
-    st.session_state['MAX_PRICE'] = 100.0
-MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=st.session_state['MIN_PRICE'], key="min_price_input")
-MAX_PRICE = st.number_input("Maximum closing price to include", min_value=0.0, value=st.session_state['MAX_PRICE'], key="max_price_input")
-st.session_state['MIN_PRICE'] = MIN_PRICE
-st.session_state['MAX_PRICE'] = MAX_PRICE
-
-st.subheader("📊 Volume Spike Filter")
-if 'MIN_PERCENT' not in st.session_state:
-    st.session_state['MIN_PERCENT'] = 80
-if 'MAX_PERCENT' not in st.session_state:
-    st.session_state['MAX_PERCENT'] = 200
-MIN_PERCENT = st.slider("Minimum % increase over average volume", 0, 500, st.session_state['MIN_PERCENT'], key="min_percent_slider")
-MAX_PERCENT = st.slider("Maximum % increase over average volume", MIN_PERCENT, 1000, st.session_state['MAX_PERCENT'], key="max_percent_slider")
-st.session_state['MIN_PERCENT'] = MIN_PERCENT
-st.session_state['MAX_PERCENT'] = MAX_PERCENT
 import streamlit as st
 import pandas as pd
 import requests
@@ -79,11 +49,7 @@ class QuoteMediaExchangeHistory:
         }
         try:
             response = requests.get(url, params=params)
-            try:
-                data = response.json()
-            except Exception as e:
-                st.error(f"❌ API request failed: {str(e)}\nRaw response: {response.text}")
-                return pd.DataFrame()
+            data = response.json()
             history = data.get("results", {}).get("history", [])
             records = []
             for item in history:
@@ -111,13 +77,11 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
         if response.status_code != 200:
             st.warning(f"⚠️ Unexpected status code {response.status_code} for {symbol}")
             return pd.DataFrame()
-        try:
-            data = response.json()
-        except Exception as e:
-            st.error(f"❌ Error fetching nethouse summary for {symbol}: {e}\nRaw response: {response.text}")
-            return pd.DataFrame()
+
+        data = response.json()
         participants = data.get("results", {}).get("nethouse", {}).get("summary", {}).get("participant", [])
         rows = []
+
         for p in participants:
             buy_volume = p.get("buy", {}).get("volume", 0)
             sell_volume = p.get("sell", {}).get("volume", 0)
@@ -164,8 +128,11 @@ USERNAME = st.text_input("Username", value=st.session_state['USERNAME'], key="us
 PASSWORD = st.text_input("Password", type="password", value=st.session_state['PASSWORD'], key="password_input")
 
 st.session_state['WM_ID'] = WM_ID
+st.session_state['USERNAME'] = USERNAME
+st.session_state['PASSWORD'] = PASSWORD
 
 # --- Date Picker ---
+
 if 'start_date' not in st.session_state or 'end_date' not in st.session_state:
     st.session_state['start_date'] = datetime.today() - timedelta(days=7)
     st.session_state['end_date'] = datetime.today()
@@ -177,7 +144,7 @@ start_date, end_date = st.date_input(
 st.session_state['start_date'] = start_date
 st.session_state['end_date'] = end_date
 
-    # --- Lookback Days for single-day analysis ---
+# --- Lookback Days for single-day analysis ---
 single_day_selected = start_date == end_date
 if single_day_selected:
     if 'LOOKBACK_DAYS' not in st.session_state:
@@ -190,16 +157,17 @@ if single_day_selected:
 else:
     LOOKBACK_DAYS = None
 
-# --- Generate list of dates ---
+# Generate list of dates
 if single_day_selected:
     date_range = [start_date]
 else:
     date_range = pd.date_range(start=start_date, end=end_date).to_pydatetime().tolist()
+st.write(f"📆 Analyzing {len(date_range)} days of data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
 
-# --- Exchange Code ---
 excode = st.text_input("Exchange Code", value="CDX")
 
 # --- Filters ---
+
 st.subheader("💵 Price Filter")
 if 'MIN_PRICE' not in st.session_state:
     st.session_state['MIN_PRICE'] = 0.0
@@ -220,23 +188,18 @@ MAX_PERCENT = st.slider("Maximum % increase over average volume", MIN_PERCENT, 1
 st.session_state['MIN_PERCENT'] = MIN_PERCENT
 st.session_state['MAX_PERCENT'] = MAX_PERCENT
 
-# --- Ensure persistent QuoteMedia object and SID ---
-def ensure_qm_object():
-    creds = (st.session_state['WM_ID'], st.session_state['USERNAME'], st.session_state['PASSWORD'])
-    if 'qm_obj' not in st.session_state:
-        st.session_state['qm_obj'] = QuoteMediaExchangeHistory(*creds)
-    else:
-        qm = st.session_state['qm_obj']
-        if (qm.wm_id, qm.username, qm.password) != creds:
-            st.session_state['qm_obj'] = QuoteMediaExchangeHistory(*creds)
-    st.session_state['sid'] = st.session_state['qm_obj'].sid
+st.subheader("🔍 Broker Buy Filter")
+if 'MIN_BROKER_PERCENT' not in st.session_state:
+    st.session_state['MIN_BROKER_PERCENT'] = 10.0
+MIN_BROKER_PERCENT = st.slider("Minimum % of total volume bought by broker", 0.0, 100.0, st.session_state['MIN_BROKER_PERCENT'], key="min_broker_percent_slider")
+st.session_state['MIN_BROKER_PERCENT'] = MIN_BROKER_PERCENT
 
-# ...existing code for UI and variable definitions...
+# --- Run Button ---
+if st.button("🚀 Run Analysis"):
 
-# --- Place the Run Analysis button and logic at the very end, after all variables are defined ---
-if st.button("\U0001F680 Run Analysis"):
-    ensure_qm_object()
-    qm = st.session_state['qm_obj']
+    qm = QuoteMediaExchangeHistory(WM_ID, USERNAME, PASSWORD)
+    st.session_state['sid'] = qm.sid
+
     # 1. Fetch EOD data for all days in range
     all_data = []
     if single_day_selected and LOOKBACK_DAYS:
@@ -245,10 +208,10 @@ if st.button("\U0001F680 Run Analysis"):
             end=start_date - timedelta(days=1), periods=LOOKBACK_DAYS, freq='B'  # business days
         ).to_pydatetime().tolist()
         fetch_dates = lookback_dates + [start_date]
-        st.info(f"\U0001F4C6 Fetching CDX EOD data for {LOOKBACK_DAYS} lookback days and selected day {start_date.strftime('%d-%b-%Y')}")
+        st.info(f"📆 Fetching CDX EOD data for {LOOKBACK_DAYS} lookback days and selected day {start_date.strftime('%d-%b-%Y')}")
     else:
         fetch_dates = date_range
-        st.info(f"\U0001F4C6 Fetching CDX EOD data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
+        st.info(f"📆 Fetching CDX EOD data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
     progress = st.progress(0)
     for i, date_obj in enumerate(fetch_dates):
         date_str = date_obj.strftime("%Y-%m-%d")
@@ -259,84 +222,18 @@ if st.button("\U0001F680 Run Analysis"):
         progress.progress((i + 1) / len(fetch_dates))
 
     if not all_data:
-        st.session_state['analysis_warning'] = "\U0001F4ED No data was returned for the selected date range."
+        st.session_state['analysis_warning'] = "📭 No data was returned for the selected date range."
         st.session_state['spikes_df'] = None
         st.session_state['full_df'] = None
     else:
         full_df = pd.concat(all_data, ignore_index=True)
-        st.session_state['analysis_success'] = f"\u2705 Fetched {len(full_df)} rows of EOD data."
+        st.session_state['analysis_success'] = f"✅ Fetched {len(full_df)} rows of EOD data."
         st.session_state['full_df_head'] = full_df.head(50)
         st.session_state['full_df'] = full_df
 
         # 2. Find outlier volume days (spikes) for each symbol
         grouped = full_df.groupby("symbol")
         spike_rows = []
-        if single_day_selected and LOOKBACK_DAYS:
-            # For each symbol, calculate avg over lookback (excluding selected day), compare selected day
-            selected_day_str = start_date.strftime("%Y-%m-%d")
-            for symbol, group in grouped:
-                group = group.sort_values("date")
-                # Exclude selected day for avg
-                lookback_group = group[group['date'] != selected_day_str]
-                if lookback_group.empty:
-                    continue
-                avg_vol = lookback_group["sharevolume"].astype(float).mean()
-                if avg_vol == 0:
-                    continue
-                # Get row for selected day
-                selected_row = group[group['date'] == selected_day_str]
-                if selected_row.empty:
-                    continue
-                row = selected_row.iloc[0].copy()
-                this_vol = float(row["sharevolume"])
-                vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
-                price = float(row.get("close", 0))
-                price_ok = MIN_PRICE <= price <= MAX_PRICE
-                min_vol = avg_vol * (1 + MIN_PERCENT / 100)
-                max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
-                if (
-                    this_vol >= min_vol
-                    and this_vol <= max_vol_limit
-                    and price_ok
-                ):
-                    row["avg_volume"] = round(avg_vol, 2)
-                    row["vol_percent"] = round(vol_percent, 2)
-                    spike_rows.append(row)
-        else:
-            # ...existing multi-day logic...
-            for symbol, group in grouped:
-                group = group.sort_values("date")
-                avg_vol = group["sharevolume"].astype(float).mean()
-                if avg_vol == 0:
-                    continue
-                max_vol = group["sharevolume"].astype(float).max()
-                for _, row in group.iterrows():
-                    this_vol = float(row["sharevolume"])
-                    price = float(row.get("close", 0))
-                    price_ok = MIN_PRICE <= price <= MAX_PRICE
-                    vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
-                    min_vol = avg_vol * (1 + MIN_PERCENT / 100)
-                    max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
-                    if (
-                        this_vol == max_vol
-                        and this_vol >= min_vol
-                        and this_vol <= max_vol_limit
-                        and price_ok
-                    ):
-                        row = row.copy()
-                        row["avg_volume"] = round(avg_vol, 2)
-                        row["vol_percent"] = round(vol_percent, 2)
-                        spike_rows.append(row)
-
-        if not spike_rows:
-            st.session_state['analysis_warning'] = "\U0001F9D8 No CDX stocks matched the volume percentage criteria."
-            st.session_state['spikes_df'] = None
-        else:
-            spikes_df = pd.DataFrame(spike_rows).sort_values(["symbol", "date", "vol_percent"], ascending=[True, True, False])
-            st.session_state['spikes_df'] = spikes_df
-            st.session_state['analysis_warning'] = None
-            st.session_state['analysis_success'] = None
-            st.session_state['outlier_table'] = spikes_df[["symbol", "date", "sharevolume", "avg_volume", "vol_percent", "close"]].reset_index(drop=True)
         if single_day_selected and LOOKBACK_DAYS:
             # For each symbol, calculate avg over lookback (excluding selected day), compare selected day
             selected_day_str = start_date.strftime("%Y-%m-%d")
