@@ -194,10 +194,21 @@ if 'MIN_BROKER_PERCENT' not in st.session_state:
 MIN_BROKER_PERCENT = st.slider("Minimum % of total volume bought by broker", 0.0, 100.0, st.session_state['MIN_BROKER_PERCENT'], key="min_broker_percent_slider")
 st.session_state['MIN_BROKER_PERCENT'] = MIN_BROKER_PERCENT
 
-# --- Run Button ---
-if st.button("🚀 Run Analysis"):
 
-    qm = QuoteMediaExchangeHistory(WM_ID, USERNAME, PASSWORD)
+# --- Persistent QuoteMedia object and SID ---
+def get_qm_object():
+    creds = (st.session_state['WM_ID'], st.session_state['USERNAME'], st.session_state['PASSWORD'])
+    if 'qm_obj' not in st.session_state:
+        st.session_state['qm_obj'] = QuoteMediaExchangeHistory(*creds)
+    else:
+        qm = st.session_state['qm_obj']
+        if (qm.wm_id, qm.username, qm.password) != creds:
+            st.session_state['qm_obj'] = QuoteMediaExchangeHistory(*creds)
+    return st.session_state['qm_obj']
+
+if st.button("🚀 Run Analysis"):
+    qm = get_qm_object()
+    qm.refresh_session()
     st.session_state['sid'] = qm.sid
 
     # 1. Fetch EOD data for all days in range
