@@ -208,19 +208,25 @@ else:
     date_range = pd.date_range(start=start_date, end=end_date).to_pydatetime().tolist()
 st.write(f"📆 Analyzing {len(date_range)} days of data from {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}")
 
+st.subheader("💵 Price Filter")
+
 excode = st.text_input("Exchange Code", value="CDX")
 
 # --- Filters ---
 
-st.subheader("💵 Price Filter")
+st.subheader("💵 Price & Volume Filters")
 if 'MIN_PRICE' not in st.session_state:
     st.session_state['MIN_PRICE'] = 0.0
 if 'MAX_PRICE' not in st.session_state:
     st.session_state['MAX_PRICE'] = 100.0
+if 'MIN_SHARES' not in st.session_state:
+    st.session_state['MIN_SHARES'] = 0
 MIN_PRICE = st.number_input("Minimum closing price to include", min_value=0.0, value=st.session_state['MIN_PRICE'], key="min_price_input")
 MAX_PRICE = st.number_input("Maximum closing price to include", min_value=0.0, value=st.session_state['MAX_PRICE'], key="max_price_input")
+MIN_SHARES = st.number_input("Minimum number of shares traded to include", min_value=0, value=st.session_state['MIN_SHARES'], key="min_shares_input")
 st.session_state['MIN_PRICE'] = MIN_PRICE
 st.session_state['MAX_PRICE'] = MAX_PRICE
+st.session_state['MIN_SHARES'] = MIN_SHARES
 
 st.subheader("📊 Volume Spike Filter")
 if 'MIN_PERCENT' not in st.session_state:
@@ -312,10 +318,12 @@ if st.button("🚀 Run Analysis"):
                 price_ok = MIN_PRICE <= price <= MAX_PRICE
                 min_vol = avg_vol * (1 + MIN_PERCENT / 100)
                 max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
+                shares_ok = this_vol >= MIN_SHARES
                 if (
                     this_vol >= min_vol
                     and this_vol <= max_vol_limit
                     and price_ok
+                    and shares_ok
                 ):
                     row["avg_volume"] = round(avg_vol, 2)
                     row["vol_percent"] = round(vol_percent, 2)
@@ -335,11 +343,13 @@ if st.button("🚀 Run Analysis"):
                     vol_percent = ((this_vol - avg_vol) / avg_vol) * 100 if avg_vol > 0 else 0
                     min_vol = avg_vol * (1 + MIN_PERCENT / 100)
                     max_vol_limit = avg_vol * (1 + MAX_PERCENT / 100)
+                    shares_ok = this_vol >= MIN_SHARES
                     if (
                         this_vol == max_vol
                         and this_vol >= min_vol
                         and this_vol <= max_vol_limit
                         and price_ok
+                        and shares_ok
                     ):
                         row = row.copy()
                         row["avg_volume"] = round(avg_vol, 2)
