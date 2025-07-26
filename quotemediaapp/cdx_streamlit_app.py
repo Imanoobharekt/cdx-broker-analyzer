@@ -38,7 +38,7 @@ class QuoteMediaExchangeHistory:
             st.info("🔄 Refreshing session...")
             self.authenticate()
 
-    def fetch_exchange_history(self, excode, date):
+    def fetch_exchange_history(self, excode, date, _retry=True):
         self.refresh_session()
         url = "https://app.quotemedia.com/data/getExchangeHistory.json"
         params = {
@@ -49,7 +49,26 @@ class QuoteMediaExchangeHistory:
         }
         try:
             response = requests.get(url, params=params)
-            data = response.json()
+            try:
+                data = response.json()
+            except Exception:
+                # Non-JSON response, likely invalid SID or forced logout
+                if _retry:
+                    st.warning("Session expired or invalid. Attempting to re-authenticate...")
+                    self.authenticate()
+                    return self.fetch_exchange_history(excode, date, _retry=False)
+                else:
+                    st.error("❌ API returned invalid response. Your credentials may be in use elsewhere or session is invalid.")
+                    return pd.DataFrame()
+            # Check for NotAuthorized or similar error in JSON
+            if data.get("code", {}).get("name") == "NotAuthorized":
+                if _retry:
+                    st.warning("Session not authorized. Attempting to re-authenticate...")
+                    self.authenticate()
+                    return self.fetch_exchange_history(excode, date, _retry=False)
+                else:
+                    st.error("❌ Not authorized. Your credentials may be in use elsewhere or session is invalid.")
+                    return pd.DataFrame()
             history = data.get("results", {}).get("history", [])
             records = []
             for item in history:
@@ -62,7 +81,7 @@ class QuoteMediaExchangeHistory:
             st.error(f"❌ API request failed: {str(e)}")
             return pd.DataFrame()
 
-def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
+def fetch_nethouse_summary(symbol, webmaster_id, sid, date, _retry=True):
     url = "https://app.quotemedia.com/data/getNethouseBySymbol.json"
     params = {
         "webmasterId": webmaster_id,
@@ -74,11 +93,36 @@ def fetch_nethouse_summary(symbol, webmaster_id, sid, date):
 
     try:
         response = requests.get(url, params=params)
-        if response.status_code != 200:
-            st.warning(f"⚠️ Unexpected status code {response.status_code} for {symbol}")
-            return pd.DataFrame()
-
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception:
+            if _retry:
+                st.warning("Session expired or invalid for broker data. Attempting to re-authenticate...")
+                # Try to get a new SID and retry
+                qm = st.session_state.get('qm_obj', None)
+                if qm:
+                    qm.authenticate()
+                    return fetch_nethouse_summary(symbol, webmaster_id, qm.sid, date, _retry=False)
+                else:
+                    st.error("❌ No valid session to re-authenticate for broker data.")
+                    return pd.DataFrame()
+            else:
+                st.error("❌ Broker API returned invalid response. Credentials may be in use elsewhere or session is invalid.")
+                return pd.DataFrame()
+        # Check for NotAuthorized or similar error in JSON
+        if data.get("code", {}).get("name") == "NotAuthorized":
+            if _retry:
+                st.warning("Session not authorized for broker data. Attempting to re-authenticate...")
+                qm = st.session_state.get('qm_obj', None)
+                if qm:
+                    qm.authenticate()
+                    return fetch_nethouse_summary(symbol, webmaster_id, qm.sid, date, _retry=False)
+                else:
+                    st.error("❌ No valid session to re-authenticate for broker data.")
+                    return pd.DataFrame()
+            else:
+                st.error("❌ Not authorized for broker data. Credentials may be in use elsewhere or session is invalid.")
+                return pd.DataFrame()
         participants = data.get("results", {}).get("nethouse", {}).get("summary", {}).get("participant", [])
         rows = []
 
