@@ -371,11 +371,28 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
     spikes_df = st.session_state['spikes_df']
     st.subheader("🎯 Outlier Volume Stocks & Days (Full Table)")
     outlier_table = st.session_state['outlier_table']
-    st.dataframe(outlier_table)
+
+    # --- Filter outlier_table by Broker Buy Filter ---
+    min_broker_percent = st.session_state.get('MIN_BROKER_PERCENT', 0.0)
+    filtered_symbols = []
+    filtered_rows = []
+    for idx, row in outlier_table.iterrows():
+        symbol = row['symbol']
+        date = row['date']
+        nethouse_df = fetch_nethouse_summary(symbol, WM_ID, st.session_state.get('sid', ''), date)
+        if not nethouse_df.empty:
+            nethouse_df['buy_volume'] = pd.to_numeric(nethouse_df['buy_volume'], errors='coerce').fillna(0)
+            total_vol = row['sharevolume']
+            nethouse_df['pct_of_symbol_volume'] = (nethouse_df['buy_volume'] / float(total_vol)) * 100 if float(total_vol) > 0 else 0
+            if (nethouse_df['pct_of_symbol_volume'] >= min_broker_percent).any():
+                filtered_symbols.append(symbol)
+                filtered_rows.append(row)
+    filtered_outlier_table = pd.DataFrame(filtered_rows)
+    st.dataframe(filtered_outlier_table)
 
     # --- Search/select for broker summary ---
     st.subheader("🔎 Broker Activity for Outlier Stocks (Aggregated Over Date Range)")
-    outlier_symbols = spikes_df["symbol"].unique().tolist()
+    outlier_symbols = filtered_outlier_table["symbol"].unique().tolist()
     if outlier_symbols:
         selected_symbol = st.selectbox(
             "Select a stock to view broker summary:",
@@ -383,7 +400,7 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             index=0,
             key="broker_symbol_select"
         )
-        st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
+        st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%d-%b-%Y')})")
         # Aggregate broker data for lookback days (single day mode) or all days in range (multi-day)
         broker_frames = []
         if single_day_selected:
@@ -415,9 +432,8 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
                 st.warning("Full EOD data not available for percent calculation.")
                 total_symbol_eod_volume = None
             else:
-                if single_day_selected and LOOKBACK_DAYS:
-                    # Use only lookback days for EOD volume
-                    symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'].isin([d.strftime('%Y-%m-%d') for d in lookback_dates]))]
+                if single_day_selected:
+                    symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'] == start_date.strftime('%Y-%m-%d'))]
                 else:
                     symbol_df = full_df[full_df['symbol'] == selected_symbol]
                 total_symbol_eod_volume = symbol_df['sharevolume'].astype(float).sum()
@@ -431,8 +447,8 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
                 broker = row['broker']
                 active_dates = all_brokers[all_brokers['broker'] == broker]['date'].unique()
                 if full_df is not None:
-                    if single_day_selected and LOOKBACK_DAYS:
-                        symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'].isin([d.strftime('%Y-%m-%d') for d in lookback_dates]))]
+                    if single_day_selected:
+                        symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'] == start_date.strftime('%Y-%m-%d'))]
                     else:
                         symbol_df = full_df[full_df['symbol'] == selected_symbol]
                     eod_on_active = symbol_df[symbol_df['date'].isin(active_dates)]['sharevolume'].astype(float).sum()
@@ -442,7 +458,6 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             broker_summary['pct_of_symbol_volume_active_days'] = broker_summary.apply(pct_active_days, axis=1)
 
             # Filter brokers by MIN_BROKER_PERCENT on either percent column
-            min_broker_percent = st.session_state.get('MIN_BROKER_PERCENT', 0.0)
             broker_summary = broker_summary[(broker_summary['pct_of_symbol_volume'] >= min_broker_percent) |
                                             (broker_summary['pct_of_symbol_volume_active_days'] >= min_broker_percent)]
 
