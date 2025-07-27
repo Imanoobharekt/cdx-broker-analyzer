@@ -386,11 +386,8 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
         st.markdown(f"### {selected_symbol} Broker Summary ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})")
         # Aggregate broker data for lookback days (single day mode) or all days in range (multi-day)
         broker_frames = []
-        if single_day_selected and LOOKBACK_DAYS:
-            lookback_dates = pd.date_range(
-                end=start_date - timedelta(days=1), periods=LOOKBACK_DAYS, freq='B'
-            ).to_pydatetime().tolist()
-            summary_dates = lookback_dates
+        if single_day_selected:
+            summary_dates = [start_date]
         else:
             summary_dates = date_range
         for date_obj in summary_dates:
