@@ -417,14 +417,12 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             st.info("No broker data for this stock in the selected summary period.")
         else:
             all_brokers = pd.concat(broker_frames, ignore_index=True)
-            for col in ["buy_volume", "sell_volume", "total_volume", "net_volume", "net_value"]:
+            for col in ["buy_volume", "sell_volume", "total_volume"]:
                 all_brokers[col] = pd.to_numeric(all_brokers[col], errors='coerce').fillna(0)
             broker_summary = all_brokers.groupby("broker").agg({
                 "buy_volume": "sum",
                 "sell_volume": "sum",
-                "total_volume": "sum",
-                "net_volume": "sum",
-                "net_value": "sum"
+                "total_volume": "sum"
             }).reset_index()
             # Use EOD total volume for the symbol as denominator
             full_df = st.session_state.get('full_df', None)
@@ -442,24 +440,8 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             else:
                 broker_summary["pct_of_symbol_volume"] = 0
 
-            # Also calculate pct using only EOD volume for days where broker had activity
-            def pct_active_days(row):
-                broker = row['broker']
-                active_dates = all_brokers[all_brokers['broker'] == broker]['date'].unique()
-                if full_df is not None:
-                    if single_day_selected:
-                        symbol_df = full_df[(full_df['symbol'] == selected_symbol) & (full_df['date'] == start_date.strftime('%Y-%m-%d'))]
-                    else:
-                        symbol_df = full_df[full_df['symbol'] == selected_symbol]
-                    eod_on_active = symbol_df[symbol_df['date'].isin(active_dates)]['sharevolume'].astype(float).sum()
-                    if eod_on_active > 0:
-                        return (row['buy_volume'] / eod_on_active) * 100
-                return 0
-            broker_summary['pct_of_symbol_volume_active_days'] = broker_summary.apply(pct_active_days, axis=1)
-
-            # Filter brokers by MIN_BROKER_PERCENT on either percent column
-            broker_summary = broker_summary[(broker_summary['pct_of_symbol_volume'] >= min_broker_percent) |
-                                            (broker_summary['pct_of_symbol_volume_active_days'] >= min_broker_percent)]
+            # Filter brokers by MIN_BROKER_PERCENT on percent column
+            broker_summary = broker_summary[(broker_summary['pct_of_symbol_volume'] >= min_broker_percent)]
 
             broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
             st.dataframe(broker_summary.reset_index(drop=True))
