@@ -444,7 +444,21 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             broker_summary = broker_summary[(broker_summary['pct_of_symbol_volume'] >= min_broker_percent)]
 
             broker_summary = broker_summary.sort_values("pct_of_symbol_volume", ascending=False)
-            st.dataframe(broker_summary.reset_index(drop=True))
+            broker_summary = broker_summary.reset_index(drop=True)
+            st.dataframe(broker_summary)
+
+            # --- Broker search dropdown ---
+            broker_names = broker_summary['broker'].tolist()
+            if broker_names:
+                selected_broker = st.selectbox(
+                    "🔎 Search for a broker:",
+                    options=broker_names,
+                    index=0,
+                    key="broker_search_select"
+                )
+                filtered_broker_df = broker_summary[broker_summary['broker'] == selected_broker]
+                st.markdown(f"#### Details for Broker: {selected_broker}")
+                st.dataframe(filtered_broker_df.reset_index(drop=True))
 elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
     st.warning(st.session_state['analysis_warning'])
 elif 'analysis_success' in st.session_state and st.session_state['analysis_success']:
