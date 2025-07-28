@@ -455,6 +455,9 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
     # --- Improved caching: cache each (symbol, date) broker fetch in session_state ---
 broker_data_cache = st.session_state.setdefault('broker_data_cache', {})
 all_broker_records = []
+# Ensure filtered_outlier_table is defined, fallback to session_state if not in local scope
+if 'filtered_outlier_table' not in locals():
+    filtered_outlier_table = st.session_state.get('outlier_table', pd.DataFrame())
 if not filtered_outlier_table.empty:
     symbols_dates = [tuple(x) for x in filtered_outlier_table[['symbol','date']].values]
     progress = st.progress(0, text="Fetching broker data for outlier stocks...")
