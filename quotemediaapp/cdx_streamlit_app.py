@@ -451,18 +451,34 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
 # === Global Broker Search Across All Outlier Stocks ===
     # Collect all broker activity for all stocks in filtered_outlier_table
     st.subheader("🔎 Search All Brokers Across Outlier Stocks")
+    # --- Cache all broker data for outlier stocks after analysis ---
+    # --- Improved caching: cache each (symbol, date) broker fetch in session_state ---
+    broker_data_cache = st.session_state.setdefault('broker_data_cache', {})
     all_broker_records = []
-    for idx, row in filtered_outlier_table.iterrows():
-        symbol = row['symbol']
-        date = row['date']
-        nethouse_df = fetch_nethouse_summary(symbol, WM_ID, st.session_state.get('sid', ''), date)
+    symbols_dates = [tuple(x) for x in filtered_outlier_table[['symbol','date']].values]
+    for symbol, date in symbols_dates:
+        cache_key = f"{symbol}|{date}"
+        if cache_key in broker_data_cache:
+            nethouse_df = broker_data_cache[cache_key]
+        else:
+            nethouse_df = fetch_nethouse_summary(symbol, WM_ID, st.session_state.get('sid', ''), date)
+            # Always store a DataFrame, even if empty
+            broker_data_cache[cache_key] = nethouse_df.copy() if not nethouse_df.empty else pd.DataFrame()
         if not nethouse_df.empty:
             nethouse_df = nethouse_df.copy()
             nethouse_df['symbol'] = symbol
             nethouse_df['date'] = date
             all_broker_records.append(nethouse_df)
+    st.session_state['broker_data_cache'] = broker_data_cache
     if all_broker_records:
         all_brokers_all_stocks = pd.concat(all_broker_records, ignore_index=True)
+        st.session_state['all_brokers_all_stocks'] = all_brokers_all_stocks
+        st.session_state['broker_cache_symbols_dates'] = set(symbols_dates)
+    else:
+        st.session_state['all_brokers_all_stocks'] = None
+        st.session_state['broker_cache_symbols_dates'] = set()
+    all_brokers_all_stocks = st.session_state.get('all_brokers_all_stocks', None)
+    if all_brokers_all_stocks is not None:
         for col in ["buy_volume", "sell_volume", "total_volume"]:
             all_brokers_all_stocks[col] = pd.to_numeric(all_brokers_all_stocks[col], errors='coerce').fillna(0)
         # Group by broker and symbol to get summary per broker per stock
@@ -472,12 +488,9 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             "total_volume": "sum"
         }).reset_index()
         # Add percent of symbol volume for each broker/stock
-        # Need EOD volume for each symbol/date
         symbol_eod_vols = filtered_outlier_table.set_index(["symbol", "date"])["sharevolume"].astype(float).to_dict()
         def get_eod_vol(row):
-            # Use the first date for this broker/symbol in all_brokers_all_stocks
             dates = all_brokers_all_stocks[(all_brokers_all_stocks['broker'] == row['broker']) & (all_brokers_all_stocks['symbol'] == row['symbol'])]['date'].unique()
-            # Use the first date (should be only one per outlier)
             if len(dates) > 0:
                 return symbol_eod_vols.get((row['symbol'], dates[0]), None)
             return None
@@ -486,7 +499,6 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             lambda row: (row['buy_volume'] / row['symbol_eod_volume']) * 100 if row['symbol_eod_volume'] and row['symbol_eod_volume'] > 0 else 0,
             axis=1
         )
-        # Broker dropdown
         broker_names_all = sorted(broker_stock_summary['broker'].unique().tolist())
         selected_broker_global = st.selectbox(
             "🔎 Search for a broker across all outlier stocks:",
