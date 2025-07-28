@@ -447,18 +447,56 @@ if 'spikes_df' in st.session_state and st.session_state['spikes_df'] is not None
             broker_summary = broker_summary.reset_index(drop=True)
             st.dataframe(broker_summary)
 
-            # --- Broker search dropdown ---
-            broker_names = broker_summary['broker'].tolist()
-            if broker_names:
-                selected_broker = st.selectbox(
-                    "🔎 Search for a broker:",
-                    options=broker_names,
-                    index=0,
-                    key="broker_search_select"
-                )
-                filtered_broker_df = broker_summary[broker_summary['broker'] == selected_broker]
-                st.markdown(f"#### Details for Broker: {selected_broker}")
-                st.dataframe(filtered_broker_df.reset_index(drop=True))
+
+# === Global Broker Search Across All Outlier Stocks ===
+    # Collect all broker activity for all stocks in filtered_outlier_table
+    st.subheader("🔎 Search All Brokers Across Outlier Stocks")
+    all_broker_records = []
+    for idx, row in filtered_outlier_table.iterrows():
+        symbol = row['symbol']
+        date = row['date']
+        nethouse_df = fetch_nethouse_summary(symbol, WM_ID, st.session_state.get('sid', ''), date)
+        if not nethouse_df.empty:
+            nethouse_df = nethouse_df.copy()
+            nethouse_df['symbol'] = symbol
+            nethouse_df['date'] = date
+            all_broker_records.append(nethouse_df)
+    if all_broker_records:
+        all_brokers_all_stocks = pd.concat(all_broker_records, ignore_index=True)
+        for col in ["buy_volume", "sell_volume", "total_volume"]:
+            all_brokers_all_stocks[col] = pd.to_numeric(all_brokers_all_stocks[col], errors='coerce').fillna(0)
+        # Group by broker and symbol to get summary per broker per stock
+        broker_stock_summary = all_brokers_all_stocks.groupby(["broker", "symbol"]).agg({
+            "buy_volume": "sum",
+            "sell_volume": "sum",
+            "total_volume": "sum"
+        }).reset_index()
+        # Add percent of symbol volume for each broker/stock
+        # Need EOD volume for each symbol/date
+        symbol_eod_vols = filtered_outlier_table.set_index(["symbol", "date"])["sharevolume"].astype(float).to_dict()
+        def get_eod_vol(row):
+            # Use the first date for this broker/symbol in all_brokers_all_stocks
+            dates = all_brokers_all_stocks[(all_brokers_all_stocks['broker'] == row['broker']) & (all_brokers_all_stocks['symbol'] == row['symbol'])]['date'].unique()
+            # Use the first date (should be only one per outlier)
+            if len(dates) > 0:
+                return symbol_eod_vols.get((row['symbol'], dates[0]), None)
+            return None
+        broker_stock_summary['symbol_eod_volume'] = broker_stock_summary.apply(get_eod_vol, axis=1)
+        broker_stock_summary['pct_of_symbol_volume'] = broker_stock_summary.apply(
+            lambda row: (row['buy_volume'] / row['symbol_eod_volume']) * 100 if row['symbol_eod_volume'] and row['symbol_eod_volume'] > 0 else 0,
+            axis=1
+        )
+        # Broker dropdown
+        broker_names_all = sorted(broker_stock_summary['broker'].unique().tolist())
+        selected_broker_global = st.selectbox(
+            "🔎 Search for a broker across all outlier stocks:",
+            options=broker_names_all,
+            index=0,
+            key="global_broker_search_select"
+        )
+        broker_global_df = broker_stock_summary[broker_stock_summary['broker'] == selected_broker_global]
+        st.markdown(f"#### All Outlier Stocks for Broker: {selected_broker_global}")
+        st.dataframe(broker_global_df.reset_index(drop=True))
 elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
     st.warning(st.session_state['analysis_warning'])
 elif 'analysis_success' in st.session_state and st.session_state['analysis_success']:
