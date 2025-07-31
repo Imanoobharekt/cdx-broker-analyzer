@@ -490,10 +490,11 @@ if not filtered_outlier_table.empty:
         # Group by broker and symbol to get summary per broker per stock
         broker_stock_summary = all_brokers_all_stocks.groupby(["broker", "symbol"]).agg({
             "buy_volume": "sum",
-            "sell_volume": "sum",
-            "total_volume": "sum"
+            "sell_volume": "sum"
         }).reset_index()
-        # Add percent of symbol volume for each broker/stock
+        # Calculate net volume (buy_volume - sell_volume)
+        broker_stock_summary["net_volume"] = broker_stock_summary["buy_volume"] - broker_stock_summary["sell_volume"]
+        # Add percent of symbol volume for each broker/stock (still based on buy_volume)
         symbol_eod_vols = filtered_outlier_table.set_index(["symbol", "date"])["sharevolume"].astype(float).to_dict()
         def get_eod_vol(row):
             dates = all_brokers_all_stocks[(all_brokers_all_stocks['broker'] == row['broker']) & (all_brokers_all_stocks['symbol'] == row['symbol'])]['date'].unique()
@@ -514,7 +515,10 @@ if not filtered_outlier_table.empty:
         )
         broker_global_df = broker_stock_summary[broker_stock_summary['broker'] == selected_broker_global]
         st.markdown(f"#### All Outlier Stocks for Broker: {selected_broker_global}")
-        st.dataframe(broker_global_df.reset_index(drop=True))
+        # Show only symbol, net_volume, buy_volume, sell_volume, pct_of_symbol_volume for clarity
+        st.dataframe(
+            broker_global_df[["symbol", "net_volume", "buy_volume", "sell_volume", "pct_of_symbol_volume"]].reset_index(drop=True)
+        )
 elif 'analysis_warning' in st.session_state and st.session_state['analysis_warning']:
     st.warning(st.session_state['analysis_warning'])
 elif 'analysis_success' in st.session_state and st.session_state['analysis_success']:
