@@ -4,6 +4,10 @@ import requests
 import json
 from datetime import datetime, timedelta
 
+# --- App Version ---
+APP_VERSION = "Ver. 1.1"
+st.sidebar.markdown(f"<span style='font-size: 16px; font-weight: bold;'>CDX Broker Volume Spike Analyzer</span><br><span style='font-size: 13px; color: gray;'>Version: {APP_VERSION}</span>", unsafe_allow_html=True)
+
 # --- QuoteMedia Class ---
 class QuoteMediaExchangeHistory:
     def __init__(self, wm_id, username, password):
